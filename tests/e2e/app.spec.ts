@@ -64,7 +64,7 @@ test('consulta clima, troca unidade e refaz busca após erro com API interceptad
     [1280, 5],
   ]) {
     await page.setViewportSize({ width, height: 800 });
-    await expect(page.getByRole('list')).toHaveCSS(
+    await expect(page.getByRole('region', { name: 'Previsão de 5 dias' }).getByRole('list')).toHaveCSS(
       'grid-template-columns',
       new RegExp(`^(\\S+\\s+){${columns - 1}}\\S+$`),
     );
@@ -80,5 +80,10 @@ test('consulta clima, troca unidade e refaz busca após erro com API interceptad
   );
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(page.getByText('Temperatura: 83 °F', { exact: true })).toBeVisible();
-  expect(apiRequests).toHaveLength(5);
+  expect(
+    apiRequests.filter((url) => new URL(url).hostname === 'geocoding-api.open-meteo.com'),
+  ).toHaveLength(3);
+  expect(
+    apiRequests.filter((url) => new URL(url).hostname === 'api.open-meteo.com'),
+  ).toHaveLength(1);
 });
