@@ -10,6 +10,7 @@ Thinking → Planning → Decomposing → Building → Testing → Reviewing →
                                                                      ▲ você está aqui
 ```
 
+
 ---
 
 ## Por que isso importa
