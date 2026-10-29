@@ -478,14 +478,19 @@ Validar sucesso do fluxo principal em uso mobile.
 
 ### T-54 — Completar composição com previsão e controles
 > Recorte implementado: `App` consome `useWeather`, apresenta os cinco estados,
-> conecta `ErrorState` a `retry` e mantém unidade local para clima e previsão.
-> O mock e o seletor de demonstração foram removidos da aplicação. Atualização
-> explícita, cache e persistência permanecem fora deste incremento.
+> conecta `ErrorState` a `retry`, disponibiliza seleção entre resultados de busca
+> e oferece atualização explícita. A unidade escolhida é persistida; respostas
+> meteorológicas são armazenadas em memória por até 10 minutos e mantidas como
+> dados anteriores identificados quando uma atualização falha. O mock e o seletor
+> de demonstração foram removidos da aplicação.
 
 - **Tipo:** UI
 - **Descrição:** Integrar em `App` a previsão diária, a alternância de unidade e a atualização explícita à tela inicial da T-30.
 - **Critérios de aceite:**
   - A tela exibe os cinco dias e oferece alternância de unidade e atualização explícita para a cidade selecionada.
+  - Resultados de busca exibem contexto regional disponível e permitem selecionar outra cidade com teclado ou toque.
+  - A unidade persiste entre visitas; indisponibilidade do armazenamento mantém Celsius como padrão sem bloquear a consulta.
+  - O cache por localidade tem TTL de 10 minutos; atualização e retry explícitos ignoram o cache, e falhas preservam dados anteriores com idade visível.
   - O fluxo completo permanece funcional em sucesso completo e parcial, sem remover os estados inicial, carregando, vazio e erro da T-30.
 - **Dependências:** T-28, T-29, T-30
 - **Arquivos prováveis:** `src/App.tsx`

@@ -19,12 +19,30 @@ export class WeatherServiceError extends Error {
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;
+const WEATHER_CACHE_TTL_MS = 10 * 60 * 1_000;
+const MAX_WEATHER_CACHE_ENTRIES = 20;
 const NETWORK_ERROR_MESSAGE =
   'Não foi possível conectar ao serviço de clima. Verifique sua conexão e tente novamente.';
 const TIMEOUT_ERROR_MESSAGE =
   'A consulta ultrapassou o limite de 10 segundos. Verifique sua conexão e tente novamente.';
 const INVALID_RESPONSE_MESSAGE =
   'O serviço retornou uma resposta inesperada. Tente novamente mais tarde.';
+
+interface WeatherCacheEntry {
+  data: WeatherData;
+  cachedAt: number;
+}
+
+export interface CachedWeather {
+  data: WeatherData;
+  ageMs: number;
+}
+
+export interface WeatherRequestOptions {
+  forceRefresh?: boolean;
+}
+
+const weatherCache = new Map<string, WeatherCacheEntry>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -145,6 +163,20 @@ function resolveTimezone(value: unknown, fallback?: string): string {
   return isValidTimezone(fallback) ? fallback : 'UTC';
 }
 
+function getWeatherCacheKey(city: City): string {
+  return `${city.latitude},${city.longitude}`;
+}
+
+export function getCachedWeather(city: City): CachedWeather | null {
+  const entry = weatherCache.get(getWeatherCacheKey(city));
+  if (!entry) return null;
+  return { data: entry.data, ageMs: Math.max(0, Date.now() - entry.cachedAt) };
+}
+
+export function clearWeatherCache(): void {
+  weatherCache.clear();
+}
+
 export async function searchCities(name: string, signal?: AbortSignal): Promise<City[]> {
   const query = name.trim();
   if (!query) return [];
@@ -178,7 +210,22 @@ function isForecastDate(value: unknown): value is string {
   );
 }
 
-export async function getWeather(city: City, signal?: AbortSignal): Promise<WeatherData> {
+export async function getWeather(
+  city: City,
+  signal?: AbortSignal,
+  options: WeatherRequestOptions = {},
+): Promise<WeatherData> {
+  if (signal?.aborted) throw abortError();
+  const cacheKey = getWeatherCacheKey(city);
+  const cached = weatherCache.get(cacheKey);
+  if (
+    !options.forceRefresh &&
+    cached &&
+    Date.now() - cached.cachedAt < WEATHER_CACHE_TTL_MS
+  ) {
+    return cached.data;
+  }
+
   const params = new URLSearchParams({
     latitude: String(city.latitude),
     longitude: String(city.longitude),
@@ -240,11 +287,18 @@ export async function getWeather(city: City, signal?: AbortSignal): Promise<Weat
     );
   }
 
-  return {
+  const weather: WeatherData = {
     city,
     timezone: resolveTimezone(data.timezone, city.timezone),
     current,
     forecast,
     receivedAt: new Date().toISOString(),
   };
+  weatherCache.delete(cacheKey);
+  weatherCache.set(cacheKey, { data: weather, cachedAt: Date.now() });
+  if (weatherCache.size > MAX_WEATHER_CACHE_ENTRIES) {
+    const oldestCacheKey = weatherCache.keys().next().value;
+    if (oldestCacheKey !== undefined) weatherCache.delete(oldestCacheKey);
+  }
+  return weather;
 }

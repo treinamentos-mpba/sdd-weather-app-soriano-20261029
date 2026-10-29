@@ -2,24 +2,40 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../src/App';
 import { MOCK_WEATHER } from '../../src/mocks/weather';
-import { getWeather, searchCities, WeatherServiceError } from '../../src/services/weatherService';
+import {
+  getCachedWeather,
+  getWeather,
+  searchCities,
+  WeatherServiceError,
+} from '../../src/services/weatherService';
 import type { WeatherData } from '../../src/types/weather';
 
 vi.mock('../../src/services/weatherService', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/services/weatherService')>();
-  return { ...original, searchCities: vi.fn(), getWeather: vi.fn() };
+  return {
+    ...original,
+    searchCities: vi.fn(),
+    getWeather: vi.fn(),
+    getCachedWeather: vi.fn(() => null),
+  };
 });
 
 const searchMock = vi.mocked(searchCities);
 const weatherMock = vi.mocked(getWeather);
+const cachedWeatherMock = vi.mocked(getCachedWeather);
 
 beforeEach(() => {
+  window.localStorage.clear();
   vi.resetAllMocks();
   searchMock.mockResolvedValue([MOCK_WEATHER.city]);
   weatherMock.mockResolvedValue(MOCK_WEATHER);
+  cachedWeatherMock.mockReturnValue(null);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function search(name: string) {
   fireEvent.change(screen.getByRole('searchbox', { name: 'Cidade' }), { target: { value: name } });
@@ -116,6 +132,74 @@ describe('App integrado', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('apresenta resultados regionais e consulta a cidade selecionada', async () => {
+    const city = {
+      ...MOCK_WEATHER.city,
+      admin1: 'Bahia',
+      country: 'Brasil',
+    };
+    const otherCity = {
+      ...MOCK_WEATHER.city,
+      id: '2',
+      name: 'Recife',
+      latitude: -8.05,
+      longitude: -34.9,
+      admin1: 'Pernambuco',
+      country: 'Brasil',
+    };
+    const otherWeather = { ...MOCK_WEATHER, city: otherCity };
+    searchMock.mockResolvedValue([city, otherCity]);
+    weatherMock.mockResolvedValueOnce(MOCK_WEATHER).mockResolvedValueOnce(otherWeather);
+    render(<App />);
+
+    await act(async () => search('Salvador'));
+
+    expect(screen.getByRole('button', { name: 'Salvador, Bahia, Brasil' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Recife, Pernambuco, Brasil' })).toBeEnabled();
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'Recife, Pernambuco, Brasil' })),
+    );
+
+    expect(screen.getByRole('heading', { name: 'Clima atual em Recife' })).toBeInTheDocument();
+    expect(weatherMock).toHaveBeenLastCalledWith(otherCity, expect.any(AbortSignal));
+    expect(searchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('persiste a unidade e restaura a preferência em uma nova montagem', () => {
+    const firstRender = render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Graus Fahrenheit' }));
+
+    expect(window.localStorage.getItem('sdd-weather-unit')).toBe('fahrenheit');
+    firstRender.unmount();
+    render(<App />);
+
+    expect(screen.getByRole('button', { name: 'Graus Fahrenheit' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('continua com Celsius e permite buscar quando o armazenamento não está disponível', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('Acesso negado', 'SecurityError');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Acesso negado', 'SecurityError');
+    });
+    render(<App />);
+
+    expect(screen.getByRole('button', { name: 'Graus Celsius' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await act(async () => search('Salvador'));
+
+    expect(screen.getByRole('heading', { name: 'Clima atual em Salvador' })).toBeInTheDocument();
+  });
+
   it('mostra empty sem forecast e permite uma nova busca preservando a unidade', async () => {
     searchMock.mockResolvedValueOnce([]);
     render(<App />);
@@ -132,6 +216,39 @@ describe('App integrado', () => {
     await act(async () => search('Salvador'));
 
     expect(screen.getByText('83 °F')).toBeInTheDocument();
+  });
+
+  it('mantém o snapshot anterior em falha de atualização e retry ignora cache', async () => {
+    weatherMock
+      .mockResolvedValueOnce(MOCK_WEATHER)
+      .mockRejectedValueOnce(new WeatherServiceError('Falha ao atualizar'))
+      .mockResolvedValueOnce(MOCK_WEATHER);
+    render(<App />);
+    await act(async () => search('Salvador'));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Atualizar' })));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Falha ao atualizar');
+    expect(screen.getByRole('status')).toHaveTextContent('Exibindo dados anteriores');
+    expect(screen.getByRole('heading', { name: 'Clima atual em Salvador' })).toBeInTheDocument();
+    expect(weatherMock).toHaveBeenNthCalledWith(
+      2,
+      MOCK_WEATHER.city,
+      expect.any(AbortSignal),
+      { forceRefresh: true },
+    );
+
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' })),
+    );
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Exibindo dados anteriores', { exact: false })).not.toBeInTheDocument();
+    expect(weatherMock).toHaveBeenNthCalledWith(
+      3,
+      MOCK_WEATHER.city,
+      expect.any(AbortSignal),
+      { forceRefresh: true },
+    );
   });
 
   it.each([

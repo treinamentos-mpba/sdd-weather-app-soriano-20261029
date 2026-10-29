@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getWeather, searchCities, WeatherServiceError } from '../../src/services/weatherService';
+import {
+  clearWeatherCache,
+  getCachedWeather,
+  getWeather,
+  searchCities,
+  WeatherServiceError,
+} from '../../src/services/weatherService';
 import type { City } from '../../src/types/weather';
 
 function mockResponse(body: unknown, status = 200) {
@@ -10,6 +16,7 @@ function mockResponse(body: unknown, status = 200) {
 }
 
 afterEach(() => {
+  clearWeatherCache();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -46,6 +53,34 @@ function forecastResponse() {
 }
 
 describe('getWeather', () => {
+  it('reutiliza a resposta em cache por dez minutos', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-29T12:00:00Z'));
+    const { fetchMock } = mockResponse(forecastResponse());
+
+    const first = await getWeather(city);
+    vi.advanceTimersByTime(9 * 60 * 1_000);
+    const second = await getWeather(city);
+
+    expect(second).toBe(first);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getCachedWeather(city)?.ageMs).toBe(9 * 60 * 1_000);
+  });
+
+  it('consulta novamente após expiração e quando a atualização é explícita', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-29T12:00:00Z'));
+    const { fetchMock } = mockResponse(forecastResponse());
+
+    await getWeather(city);
+    await getWeather(city, undefined, { forceRefresh: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(10 * 60 * 1_000);
+    await getWeather(city);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('consulta coordenadas, métricas e unidades canônicas para cinco dias', async () => {
     const { fetchMock } = mockResponse(forecastResponse());
 
@@ -265,6 +300,7 @@ describe('getWeather', () => {
     mockResponse({ ...forecastResponse(), timezone: null });
     await expect(getWeather(city)).resolves.toMatchObject({ timezone: city.timezone });
 
+    clearWeatherCache();
     mockResponse({ ...forecastResponse(), timezone: 'fuso-invalido' });
     await expect(getWeather({ ...city, timezone: undefined })).resolves.toMatchObject({
       timezone: 'UTC',

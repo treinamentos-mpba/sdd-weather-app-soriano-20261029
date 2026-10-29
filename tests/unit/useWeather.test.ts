@@ -2,12 +2,22 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWeather } from '../../src/hooks/useWeather';
 import { MOCK_WEATHER } from '../../src/mocks/weather';
-import { getWeather, searchCities, WeatherServiceError } from '../../src/services/weatherService';
+import {
+  getCachedWeather,
+  getWeather,
+  searchCities,
+  WeatherServiceError,
+} from '../../src/services/weatherService';
 import type { City, WeatherData } from '../../src/types/weather';
 
 vi.mock('../../src/services/weatherService', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/services/weatherService')>();
-  return { ...original, searchCities: vi.fn(), getWeather: vi.fn() };
+  return {
+    ...original,
+    searchCities: vi.fn(),
+    getWeather: vi.fn(),
+    getCachedWeather: vi.fn(() => null),
+  };
 });
 
 const city = MOCK_WEATHER.city;
@@ -15,6 +25,7 @@ const otherCity: City = { ...city, id: '2', name: 'Outra cidade' };
 const otherWeather: WeatherData = { ...MOCK_WEATHER, city: otherCity };
 const searchMock = vi.mocked(searchCities);
 const weatherMock = vi.mocked(getWeather);
+const cachedWeatherMock = vi.mocked(getCachedWeather);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -30,6 +41,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   searchMock.mockResolvedValue([city, otherCity]);
   weatherMock.mockResolvedValue(MOCK_WEATHER);
+  cachedWeatherMock.mockReturnValue(null);
 });
 
 afterEach(cleanup);
@@ -176,6 +188,40 @@ describe('useWeather', () => {
     expect(searchMock).not.toHaveBeenCalled();
     expect(weatherMock).toHaveBeenNthCalledWith(2, otherCity, expect.any(AbortSignal));
     expect(result.current).toMatchObject({ status: 'success', data: otherWeather, error: null });
+  });
+
+  it('mantém cache anterior em falha de refresh e retry também ignora cache', async () => {
+    const cached = { data: MOCK_WEATHER, ageMs: 65_000 };
+    cachedWeatherMock.mockReturnValue(cached);
+    const { result } = renderHook(() => useWeather());
+    await act(() => result.current.selectCity(city));
+    weatherMock.mockRejectedValueOnce(new WeatherServiceError('Falha ao atualizar'));
+
+    await act(() => result.current.refresh());
+
+    expect(weatherMock).toHaveBeenNthCalledWith(
+      2,
+      city,
+      expect.any(AbortSignal),
+      { forceRefresh: true },
+    );
+    expect(result.current).toMatchObject({
+      status: 'error',
+      data: MOCK_WEATHER,
+      isStale: true,
+      cacheAgeMs: 65_000,
+    });
+
+    weatherMock.mockResolvedValue(otherWeather);
+    await act(() => result.current.retry());
+
+    expect(weatherMock).toHaveBeenNthCalledWith(
+      3,
+      city,
+      expect.any(AbortSignal),
+      { forceRefresh: true },
+    );
+    expect(result.current).toMatchObject({ status: 'success', isStale: false, data: otherWeather });
   });
 
   it('uma nova busca limpa o clima e as cidades anteriores', async () => {
