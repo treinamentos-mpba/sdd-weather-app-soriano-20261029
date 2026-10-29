@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useState } from 'react';
 import CurrentWeather from './components/CurrentWeather';
 import ForecastList from './components/ForecastList';
 import SearchBar from './components/SearchBar';
@@ -6,47 +6,19 @@ import EmptyState from './components/states/EmptyState';
 import ErrorState from './components/states/ErrorState';
 import LoadingState from './components/states/LoadingState';
 import UnitToggle from './components/UnitToggle';
-import { MOCK_WEATHER } from './mocks/weather';
+import { useWeather } from './hooks/useWeather';
 import type { Unit } from './types/weather';
 
-const demoStates = [
-  { value: 'idle', label: 'Inicial' },
-  { value: 'loading', label: 'Carregando' },
-  { value: 'empty', label: 'Sem resultados' },
-  { value: 'error', label: 'Erro' },
-  { value: 'success', label: 'Sucesso' },
-] as const;
-
-type DemoStatus = (typeof demoStates)[number]['value'];
-
-const receivedAt = new Intl.DateTimeFormat('pt-BR', {
-  dateStyle: 'short',
-  timeStyle: 'short',
-  timeZone: MOCK_WEATHER.timezone,
-}).format(new Date(MOCK_WEATHER.receivedAt));
-
 export default function App() {
-  const demoId = useId();
   const [unit, setUnit] = useState<Unit>('celsius');
-  const [status, setStatus] = useState<DemoStatus>('idle');
-  const [query, setQuery] = useState(MOCK_WEATHER.city.name);
-
-  useEffect(() => {
-    if (status !== 'loading') return;
-
-    const timer = window.setTimeout(() => {
-      const matches =
-        query.toLocaleLowerCase('pt-BR') === MOCK_WEATHER.city.name.toLocaleLowerCase('pt-BR');
-      setStatus(matches ? 'success' : 'empty');
-    }, 600);
-
-    return () => window.clearTimeout(timer);
-  }, [status, query]);
-
-  function search(city: string) {
-    setQuery(city);
-    setStatus('loading');
-  }
+  const { status, data, error, search, retry } = useWeather();
+  const receivedAt = data
+    ? new Intl.DateTimeFormat('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: data.timezone,
+      }).format(new Date(data.receivedAt))
+    : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-night-900 via-night-800 to-night-900 font-sans text-white">
@@ -67,73 +39,43 @@ export default function App() {
             </h1>
             <UnitToggle unit={unit} onChange={setUnit} />
           </div>
-          <p className="text-slate-300">
-            Demonstração sem API: dados fictícios e fixos de Salvador.
-          </p>
+          <p className="text-slate-300">Consulte o clima atual e a previsão para sua cidade.</p>
           <SearchBar onSearch={search} disabled={status === 'loading'} />
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <label htmlFor={demoId}>Estado da demonstração</label>
-            <select
-              id={demoId}
-              value={status}
-              onChange={(event) => {
-                const next = demoStates.find((state) => state.value === event.target.value);
-                if (next) {
-                  if (next.value === 'loading') setQuery(MOCK_WEATHER.city.name);
-                  setStatus(next.value);
-                }
-              }}
-              className="min-h-11 rounded-xl border border-white/10 bg-night-800 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
-            >
-              {demoStates.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
         </header>
         <main id="main-content" tabIndex={-1} className="flex-1 space-y-6">
           {status === 'idle' && (
             <EmptyState
               title="Como está o tempo?"
-              hint="Busque Salvador para explorar o exemplo ou escolha um estado da demonstração."
+              hint="Digite o nome de uma cidade para consultar o clima e a previsão."
             />
           )}
-          {status === 'loading' && <LoadingState message="Consultando o exemplo de clima..." />}
-          {status === 'empty' && (
-            <EmptyState hint="Este exemplo contém apenas Salvador. Digite Salvador para ver o clima." />
-          )}
-          {status === 'error' && (
-            <ErrorState
-              message="Falha simulada na consulta. Nenhuma API foi acessada."
-              onRetry={() => search(query)}
-            />
-          )}
-          {status === 'success' && (
+          {status === 'loading' && <LoadingState message="Consultando o clima..." />}
+          {status === 'empty' && <EmptyState />}
+          {status === 'error' && error !== null && <ErrorState message={error} onRetry={retry} />}
+          {status === 'success' && data && (
             <>
-              <CurrentWeather city={MOCK_WEATHER.city} current={MOCK_WEATHER.current} unit={unit} />
+              <CurrentWeather city={data.city} current={data.current} unit={unit} />
               <ForecastList
-                forecast={MOCK_WEATHER.forecast}
+                forecast={data.forecast}
                 unit={unit}
-                referenceDate={MOCK_WEATHER.forecast[0].date}
+                referenceDate={data.forecast[0]?.date}
               />
               <p className="text-sm text-slate-300">
-                Snapshot fictício de <time dateTime={MOCK_WEATHER.receivedAt}>{receivedAt}</time> (
-                {MOCK_WEATHER.timezone}). Não representa o clima atual.
+                Dados recebidos em <time dateTime={data.receivedAt}>{receivedAt}</time> (
+                {data.timezone}).
               </p>
             </>
           )}
         </main>
         <footer className="border-t border-white/10 pt-4 text-sm text-slate-300">
-          Feito com React e Tailwind CSS · Integração prevista com{' '}
+          Feito com React e Tailwind CSS · Dados de{' '}
           <a
             href="https://open-meteo.com/"
             className="rounded text-accent-400 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
           >
             Open-Meteo
           </a>
-          . Esta demonstração usa somente dados mockados.
+          .
         </footer>
       </div>
     </div>

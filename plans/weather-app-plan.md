@@ -198,18 +198,18 @@ type WeatherState =
 
 ## Data Flow
 
-### Etapa de UI sem API
+### Integração implementada no App
 
-`App` mantém `unit` e o estado de demonstração (`idle`, `loading`, `empty`,
-`error`, `success`) localmente. O header reúne marca, `SearchBar`, `UnitToggle`
-e um seletor explicitamente identificado como demonstração. Buscar Salvador
-(ignorando maiúsculas/minúsculas) simula 600 ms de carregamento e mostra
-`MOCK_WEATHER`; outras consultas produzem estado vazio, sem inventar cidades.
-O seletor permite visualizar erro e testar retry da última consulta. Timers são
-cancelados ao trocar de estado ou desmontar. As temperaturas são convertidas
-somente pelos componentes na renderização, e a unidade é preservada ao alternar
-estados. Não há rede, persistência ou geocodificação nesta etapa. O snapshot
-fixo fornece a referência das datas; o layout identifica os dados como fictícios.
+`App` usa `useWeather` para obter `status`, `data`, `error`, `search` e `retry`.
+`SearchBar` envia a consulta e fica desabilitada durante `loading`.
+`idle` apresenta orientação; `empty` informa ausência de cidades; `error`
+apresenta a mensagem do hook e liga `ErrorState` diretamente a `retry`.
+Em `success`, `CurrentWeather` e `ForecastList` recebem os dados retornados.
+`unit` permanece local no `App`, preservada entre estados e passada aos dois
+componentes para conversão somente na apresentação, sem novas consultas.
+O horário de recebimento é formatado no fuso retornado e a fonte é Open-Meteo.
+O seletor de demonstração e o timer simulado foram removidos; `MOCK_WEATHER`
+permanece apenas como fixture. Cache e persistência não foram integrados.
 `main.tsx` monta a aplicação e importa `styles/index.css` com as diretivas Tailwind.
 
 ### Integração futura
@@ -274,6 +274,12 @@ flowchart TD
 
 **Geocoding — Open-Meteo Geocoding API**
 
+Recorte implementado da T-14: `searchCities(name: string): Promise<City[]>` em
+`src/services/weatherService.ts`. Consulta vazia após `trim` retorna `[]` sem
+rede; o nome usa `encodeURIComponent`. Respostas HTTP não-ok geram
+`WeatherServiceError` com o status; estruturas inválidas também geram esse erro.
+A integração com a UI e o cancelamento externo permanecem para etapas posteriores.
+
 - URL: `GET https://geocoding-api.open-meteo.com/v1/search`
 - Parâmetros relevantes: `name` (consulta aparada), `count=5`, `language=pt` e
   `format=json`. A busca é enviada explicitamente e não promete corrigir grafia
@@ -303,6 +309,13 @@ flowchart TD
   exibir contexto regional quando disponível (RF-02, RF-08).
 
 **Clima atual e previsão — Open-Meteo Forecast API**
+
+Recorte implementado da T-15: `getWeather(city: City): Promise<WeatherData>` em
+`src/services/weatherService.ts`, sem cache ou integração com a UI. HTTP não-ok,
+ausência de `current`/`daily`, fuso inválido ou menos de cinco datas válidas
+geram `WeatherServiceError`. O retorno contém os primeiros cinco dias e
+`receivedAt` em ISO 8601; medidas ausentes ou não numéricas tornam-se `null`.
+Esta assinatura não inclui classificação de completude ou cancelamento externo.
 
 - URL: `GET https://api.open-meteo.com/v1/forecast`
 - Parâmetros relevantes: `latitude` e `longitude` da cidade selecionada;
@@ -365,6 +378,19 @@ flowchart TD
 
 ## State Management
 
+Recorte implementado da T-20: `useWeather` em `src/hooks/useWeather.ts` expõe
+`status`, `data`, `cities`, `error` (mensagem ou `null`), `query`, `search`,
+`selectCity` e `retry`. Por solicitação deste incremento, `search` carrega o
+clima do primeiro resultado automaticamente, em vez da seleção explícita
+prevista no fluxo original. Consulta aparada com menos de dois caracteres
+gera erro de validação sem rede. Sem cidades, o status é `empty`.
+`retry` repete a última ação iniciada: busca completa ou seleção de cidade.
+Cada ação limpa dados/erro anteriores; busca também limpa a lista de cidades,
+enquanto seleção preserva a lista e a consulta. IDs sequenciais invalidam
+respostas antigas e operações pendentes após desmontagem. Os services ainda
+não expõem cancelamento externo. O hook é consumido pelo `App`, sem cache,
+persistência ou estados separados para busca e clima.
+
 - Manter a consulta digitada, resultados e `SearchState`, cidade selecionada e
   `WeatherState` no hook `useWeather`, que coordena a tela; componentes recebem
   dados, preferências e ações por props. Não adicionar store global nem backend.
@@ -422,6 +448,12 @@ flowchart TD
   expiração para `timeout`, apresentar “A consulta demorou mais que o esperado”
   e oferecer retry. Diferenciar abort intencional por request obsoleta de timeout:
   o primeiro não publica erro. Ignorar qualquer resposta tardia.
+  Recorte implementado das T-17/T-18: ambas as consultas usam o helper interno
+  `fetchWithTimeout` com `AbortController` e limite de 10 segundos para o `fetch`.
+  `AbortError` gera `WeatherServiceError("A requisição demorou demais.")` e
+  falhas de rede geram `WeatherServiceError("Falha de rede.")`. O timer é
+  limpo no `finally`, tanto em sucesso quanto em falha. O cancelamento externo
+  ainda não é exposto pelas assinaturas dos services.
 - **Resposta parcial:** validar campos individualmente; valores ausentes ou
   inválidos ficam `null` e são exibidos como “Indisponível”. Se existir ao menos
   um dado meteorológico utilizável, publicar `success` com `completeness:

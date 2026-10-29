@@ -102,17 +102,20 @@ Decisões-chave:
 
 ---
 
-## Desenvolvimento da UI sem API
+## Aplicação integrada à Open-Meteo
 
-Execute `pnpm dev` para abrir o layout completo. Busque **Salvador** para ver o
-clima e a previsão após um carregamento simulado de 600 ms; outras cidades
-mostram o estado vazio. O seletor **Estado da demonstração** permite visualizar
-inicial, carregando, vazio, erro e sucesso. “Tentar novamente” repete a última
-consulta (Salvador por padrão). O toggle °C/°F preserva a unidade entre estados
-e converte somente na renderização. Não há requisições à API nem persistência
-nesta etapa; todos os dados estão identificados como fictícios.
+Execute `pnpm dev` e busque uma cidade. O `App` usa `useWeather` para buscar
+cidades e carregar automaticamente o clima da primeira encontrada, exibindo
+os estados inicial, carregando, vazio, erro e sucesso. “Tentar novamente”
+repete a última operação. A unidade °C/°F permanece como estado de UI e é
+preservada entre consultas, sem novas requisições ao trocar a unidade.
+Os dados recebidos exibem horário e fuso da localidade; a API não exige chave.
+Ainda não há cache ou persistência.
 
-Importe o mock diretamente; não é necessário iniciar serviços ou configurar rede:
+### Fixtures para desenvolvimento e testes
+
+O mock continua disponível para testes isolados, mas não é usado pelo `App`.
+Importe-o diretamente para trabalhar sem rede:
 
 ```ts
 import { MOCK_WEATHER } from './mocks/weather';

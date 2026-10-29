@@ -345,6 +345,11 @@ Validar sucesso do fluxo principal em uso mobile.
 ## Entrega 3 — Orquestração e interface
 
 ### T-20 — Orquestrar busca, seleção, consulta e retry
+> Recorte solicitado neste incremento: expor um único `status` e carregar
+> automaticamente o clima da primeira cidade encontrada. `selectCity` permite
+> consultar outra cidade e `retry` repete a última ação iniciada. A implementação
+> não inclui cache; a integração com o `App` ocorre na T-30/T-54.
+
 - **Tipo:** Data
 - **Descrição:** Implementar `useWeather` para coordenar estados da tela, seleção explícita, consultas, retry e proteção contra respostas obsoletas.
 - **Critérios de aceite:**
@@ -472,6 +477,11 @@ Validar sucesso do fluxo principal em uso mobile.
 - **Rastreabilidade:** RF-01 a RF-03, RF-07, RF-08, RNF-04, RNF-08
 
 ### T-54 — Completar composição com previsão e controles
+> Recorte implementado: `App` consome `useWeather`, apresenta os cinco estados,
+> conecta `ErrorState` a `retry` e mantém unidade local para clima e previsão.
+> O mock e o seletor de demonstração foram removidos da aplicação. Atualização
+> explícita, cache e persistência permanecem fora deste incremento.
+
 - **Tipo:** UI
 - **Descrição:** Integrar em `App` a previsão diária, a alternância de unidade e a atualização explícita à tela inicial da T-30.
 - **Critérios de aceite:**

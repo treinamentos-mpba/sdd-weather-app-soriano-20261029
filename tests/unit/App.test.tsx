@@ -2,111 +2,145 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../src/App';
 import { MOCK_WEATHER } from '../../src/mocks/weather';
+import { getWeather, searchCities, WeatherServiceError } from '../../src/services/weatherService';
+import type { WeatherData } from '../../src/types/weather';
+
+vi.mock('../../src/services/weatherService', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/services/weatherService')>();
+  return { ...original, searchCities: vi.fn(), getWeather: vi.fn() };
+});
+
+const searchMock = vi.mocked(searchCities);
+const weatherMock = vi.mocked(getWeather);
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  vi.resetAllMocks();
+  searchMock.mockResolvedValue([MOCK_WEATHER.city]);
+  weatherMock.mockResolvedValue(MOCK_WEATHER);
 });
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
+afterEach(cleanup);
 
-async function finishLoading() {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(600);
-  });
+function search(name: string) {
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Cidade' }), { target: { value: name } });
+  fireEvent.submit(screen.getByRole('search'));
 }
 
-describe('App mockado', () => {
-  it('inicia com marca, busca, unidade Celsius e orientação sem apresentar dados como atuais', () => {
+describe('App integrado', () => {
+  it('inicia com busca, unidade Celsius e orientação sem consultar a rede', () => {
     render(<App />);
-    expect(screen.getByRole('banner')).toBeInTheDocument();
+
     expect(screen.getByRole('heading', { name: 'SDD Weather' })).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: 'Cidade' })).toBeEnabled();
     expect(screen.getByRole('button', { name: '°C' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('main')).toHaveTextContent('Como está o tempo?');
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.getByRole('contentinfo')).toHaveTextContent('Dados de Open-Meteo');
+    expect(searchMock).not.toHaveBeenCalled();
+    expect(weatherMock).not.toHaveBeenCalled();
+  });
+
+  it('mostra loading até o forecast terminar e converte temperaturas sem novas consultas', async () => {
+    let resolveWeather!: (data: WeatherData) => void;
+    weatherMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveWeather = resolve;
+      }),
+    );
+    render(<App />);
+
+    await act(async () => search('  Salvador  '));
+
+    expect(searchMock).toHaveBeenCalledExactlyOnceWith('Salvador');
+    expect(weatherMock).toHaveBeenCalledExactlyOnceWith(MOCK_WEATHER.city);
+    expect(screen.getByRole('status')).toHaveTextContent('Consultando o clima...');
+    expect(screen.getByRole('searchbox')).toBeDisabled();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+
+    await act(async () => resolveWeather(MOCK_WEATHER));
+
+    expect(screen.getByRole('searchbox')).toBeEnabled();
+    expect(screen.getByRole('heading', { name: 'Clima atual em Salvador' })).toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(5);
+    expect(screen.getByText('Dados recebidos em', { exact: false })).toHaveTextContent(
+      'America/Bahia',
+    );
+    expect(
+      document.querySelector(`time[datetime="${MOCK_WEATHER.receivedAt}"]`),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '°F' }));
+    expect(screen.getByText('83 °F')).toBeInTheDocument();
+    expect(screen.getAllByText(/°F/).filter((node) => node.tagName !== 'BUTTON')).toHaveLength(12);
+    expect(screen.queryByText(/°C/, { selector: 'p, dd' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '°C' }));
+    expect(screen.getByText('28 °C')).toBeInTheDocument();
+    expect(searchMock).toHaveBeenCalledTimes(1);
+    expect(weatherMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('apresenta os dados retornados em vez do snapshot fixo de Salvador', async () => {
+    const city = { ...MOCK_WEATHER.city, id: '2', name: 'Recife' };
+    searchMock.mockResolvedValue([city]);
+    weatherMock.mockResolvedValue({
+      ...MOCK_WEATHER,
+      city,
+      current: { ...MOCK_WEATHER.current, temperatureC: 19.2 },
+      forecast: MOCK_WEATHER.forecast.map((day) => ({ ...day, temperatureMaxC: 21 })),
+    });
+    render(<App />);
+
+    await act(async () => search('Recife'));
+
+    expect(screen.getByRole('heading', { name: 'Clima atual em Recife' })).toBeInTheDocument();
+    expect(screen.getByText('19 °C')).toBeInTheDocument();
+    expect(screen.getAllByText('21 °C')).toHaveLength(5);
     expect(
       screen.queryByRole('heading', { name: 'Clima atual em Salvador' }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole('contentinfo')).toHaveTextContent('somente dados mockados');
   });
 
-  it('busca Salvador, mostra loading por 600 ms e converte todas as temperaturas sem rede', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    const original = JSON.stringify(MOCK_WEATHER);
-    try {
-      render(<App />);
-      fireEvent.change(screen.getByRole('searchbox'), { target: { value: '  salvador  ' } });
-      expect(screen.queryByText('Consultando o exemplo de clima...')).not.toBeInTheDocument();
-      fireEvent.submit(screen.getByRole('search'));
-      expect(screen.getByRole('status')).toHaveTextContent('Consultando o exemplo de clima...');
-      expect(screen.getByRole('searchbox')).toBeDisabled();
-      await act(async () => vi.advanceTimersByTimeAsync(599));
-      expect(screen.queryByRole('article')).not.toBeInTheDocument();
-      await act(async () => vi.advanceTimersByTimeAsync(1));
-
-      expect(screen.getByRole('searchbox')).toBeEnabled();
-      expect(screen.getByRole('heading', { name: 'Clima atual em Salvador' })).toBeInTheDocument();
-      expect(screen.getAllByRole('article')).toHaveLength(5);
-      expect(
-        screen.getByText('Não representa o clima atual.', { exact: false }),
-      ).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: '°F' }));
-      expect(screen.getAllByText(/°F/).filter((node) => node.tagName !== 'BUTTON')).toHaveLength(
-        12,
-      );
-      expect(screen.queryByText(/°C/, { selector: 'p, dd' })).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: '°C' }));
-      expect(screen.getByText('28 °C')).toBeInTheDocument();
-      expect(JSON.stringify(MOCK_WEATHER)).toBe(original);
-      expect(fetchSpy).not.toHaveBeenCalled();
-    } finally {
-      fetchSpy.mockRestore();
-    }
-  });
-
-  it('mantém a busca disponível após estado vazio e permite corrigir a consulta', async () => {
+  it('mostra empty sem forecast e permite uma nova busca preservando a unidade', async () => {
+    searchMock.mockResolvedValueOnce([]);
     render(<App />);
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Recife' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Buscar' }));
-    await finishLoading();
+    fireEvent.click(screen.getByRole('button', { name: '°F' }));
+
+    await act(async () => search('Inexistente'));
+
     expect(screen.getByRole('heading', { name: 'Nenhuma cidade encontrada' })).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('searchbox')).toBeEnabled();
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Salvador' } });
-    fireEvent.submit(screen.getByRole('search'));
-    await finishLoading();
-    expect(screen.getAllByRole('article')).toHaveLength(5);
+    expect(weatherMock).not.toHaveBeenCalled();
+
+    await act(async () => search('Salvador'));
+
+    expect(screen.getByText('83 °F')).toBeInTheDocument();
   });
 
-  it('permite explorar todos os estados, cancela loading anterior e preserva unidade no retry', async () => {
+  it.each([
+    'search',
+    'forecast',
+  ])('exibe erro de %s e ErrorState refaz a operação com retry', async (failure) => {
+    if (failure === 'search')
+      searchMock.mockRejectedValueOnce(new WeatherServiceError('Falha de rede.'));
+    else weatherMock.mockRejectedValueOnce(new WeatherServiceError('A requisição demorou demais.'));
     render(<App />);
-    const selector = screen.getByRole('combobox', { name: 'Estado da demonstração' });
     fireEvent.click(screen.getByRole('button', { name: '°F' }));
-    fireEvent.change(selector, { target: { value: 'loading' } });
-    expect(screen.getByRole('status')).toHaveTextContent('Consultando');
-    fireEvent.change(selector, { target: { value: 'error' } });
-    await finishLoading();
-    expect(screen.getByRole('alert')).toHaveTextContent('Falha simulada');
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    await finishLoading();
-    expect(screen.getByText('83 °F')).toBeInTheDocument();
-    fireEvent.change(selector, { target: { value: 'empty' } });
-    expect(screen.getByRole('heading', { name: 'Nenhuma cidade encontrada' })).toBeInTheDocument();
-    fireEvent.change(selector, { target: { value: 'idle' } });
-    expect(screen.getByRole('heading', { name: 'Como está o tempo?' })).toBeInTheDocument();
-    fireEvent.change(selector, { target: { value: 'success' } });
-    expect(screen.getByText('83 °F')).toBeInTheDocument();
-  });
 
-  it('remove o timer ao desmontar enquanto carrega', () => {
-    const { unmount } = render(<App />);
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'loading' } });
-    expect(vi.getTimerCount()).toBeGreaterThan(0);
-    unmount();
-    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => search('Salvador'));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      failure === 'search' ? 'Falha de rede.' : 'A requisição demorou demais.',
+    );
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(screen.getByRole('searchbox')).toBeEnabled();
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' })),
+    );
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('83 °F')).toBeInTheDocument();
+    expect(searchMock).toHaveBeenNthCalledWith(2, 'Salvador');
+    expect(weatherMock).toHaveBeenCalledTimes(failure === 'search' ? 1 : 2);
   });
 });

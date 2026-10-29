@@ -30,6 +30,12 @@ Celsius é a unidade inicial.
 
 ## Functional Requirements
 
+Recorte do hook neste incremento: por solicitação explícita, a busca carrega
+automaticamente o clima da primeira cidade encontrada, mantendo os resultados
+disponíveis para selecionar outra cidade. Esta é uma exceção ao fluxo original
+de seleção explícita descrito abaixo. O `App` consome o hook e substitui a
+demonstração por consultas reais, exibindo os cinco estados da operação.
+
 Complemento para o hero de clima atual: exibir também pressão na superfície em
 hPa, ou “Indisponível” quando ausente, preservando as demais métricas de RF-03.
 
