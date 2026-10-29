@@ -51,9 +51,12 @@ test('consulta clima, troca unidade e refaz busca após erro com API interceptad
   await page.getByRole('button', { name: 'Buscar' }).click();
   await expect(page.getByRole('heading', { name: 'Clima atual em Salvador' })).toBeVisible();
   await expect(page.getByRole('article')).toHaveCount(5);
-  await page.getByRole('button', { name: '°F' }).click();
+  await page.getByRole('button', { name: 'Graus Fahrenheit' }).click();
   await expect(page.getByText('Temperatura: 83 °F', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '°F' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Graus Fahrenheit' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
 
   for (const [width, columns] of [
     [360, 2],
@@ -72,7 +75,9 @@ test('consulta clima, troca unidade e refaz busca após erro com API interceptad
 
   failSearch = true;
   await page.getByRole('button', { name: 'Buscar' }).click();
-  await expect(page.getByRole('alert')).toContainText('HTTP 500');
+  await expect(page.getByRole('alert')).toContainText(
+    'O serviço de clima está indisponível no momento. Tente novamente mais tarde.',
+  );
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(page.getByText('Temperatura: 83 °F', { exact: true })).toBeVisible();
   expect(apiRequests).toHaveLength(5);

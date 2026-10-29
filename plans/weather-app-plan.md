@@ -310,12 +310,14 @@ A integração com a UI e o cancelamento externo permanecem para etapas posterio
 
 **Clima atual e previsão — Open-Meteo Forecast API**
 
-Recorte implementado da T-15: `getWeather(city: City): Promise<WeatherData>` em
-`src/services/weatherService.ts`, sem cache ou integração com a UI. HTTP não-ok,
-ausência de `current`/`daily`, fuso inválido ou menos de cinco datas válidas
-geram `WeatherServiceError`. O retorno contém os primeiros cinco dias e
-`receivedAt` em ISO 8601; medidas ausentes ou não numéricas tornam-se `null`.
-Esta assinatura não inclui classificação de completude ou cancelamento externo.
+Recorte implementado da T-15: `getWeather(city: City, signal?: AbortSignal):
+Promise<WeatherData>` em `src/services/weatherService.ts`, sem cache ou
+integração com a UI. HTTP não-ok e resposta sem nenhuma medida utilizável geram
+`WeatherServiceError`; blocos `current`/`daily` ausentes são normalizados como
+dados vazios para preservar o bloco utilizável. Medidas ausentes ou não
+numéricas tornam-se `null`, e datas diárias inválidas são omitidas. O fuso usa
+o valor válido da resposta, o fuso válido da cidade ou `UTC`, nessa ordem. O
+retorno contém até cinco dias válidos e `receivedAt` em ISO 8601.
 
 - URL: `GET https://api.open-meteo.com/v1/forecast`
 - Parâmetros relevantes: `latitude` e `longitude` da cidade selecionada;
@@ -367,10 +369,12 @@ Esta assinatura não inclui classificação de completude ou cancelamento extern
   `precipitation_probability_max`, atribuindo-os a `date`, `temperatureMaxC`,
   `temperatureMinC`, `weatherCode` e `precipitationProbability`. Os arrays
   `daily` são paralelos: os valores na mesma posição pertencem ao mesmo dia.
-- Validar os dados antes de normalizar. Campo ausente ou inválido vira `null`;
-  datas/fuso vêm da resposta e não devem ser recalculados no fuso do navegador.
-  Exibir apenas dias válidos e sinalizar previsão incompleta se faltarem dias
-  (AC-05, AC-21). Traduzir `weather_code` WMO por função pura; código
+- Validar os dados antes de normalizar. Medida ausente ou inválida vira `null`;
+  datas válidas permanecem no fuso da localidade e não são recalculadas no fuso
+  do navegador. Omitir dias sem data válida, exibir somente os dias válidos e
+  sinalizar previsão incompleta se faltarem dias (AC-05, AC-21). Se `timezone`
+  faltar ou for inválido, usar o fuso válido da cidade ou `UTC`. Traduzir
+  `weather_code` WMO por função pura; código
   desconhecido não impede exibir as demais medidas.
 - Não enviar localização do dispositivo nem outros dados além da consulta
   necessária (RNF-10). Respeitar os termos de uso e os limites vigentes da

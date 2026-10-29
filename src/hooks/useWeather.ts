@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getWeather, searchCities } from '../services/weatherService';
+import {
+  getWeather,
+  searchCities,
+  WeatherServiceError,
+} from '../services/weatherService';
 import type { City, WeatherData } from '../types/weather';
 
 type WeatherStatus = 'idle' | 'loading' | 'success' | 'error' | 'empty';
@@ -24,15 +28,20 @@ export function useWeather() {
   });
   const lastOperation = useRef<Operation | null>(null);
   const requestId = useRef(0);
+  const activeRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
     return () => {
       requestId.current += 1;
+      activeRequest.current?.abort();
     };
   }, []);
 
   const execute = useCallback(async (operation: Operation): Promise<void> => {
     const id = ++requestId.current;
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
     lastOperation.current = operation;
     setState((previous) => ({
       ...previous,
@@ -55,7 +64,7 @@ export function useWeather() {
           return;
         }
 
-        const cities = await searchCities(operation.name);
+        const cities = await searchCities(operation.name, controller.signal);
         if (id !== requestId.current) return;
         setState((previous) => ({ ...previous, cities }));
         const firstCity = cities[0];
@@ -68,16 +77,21 @@ export function useWeather() {
         city = operation.city;
       }
 
-      const data = await getWeather(city);
+      const data = await getWeather(city, controller.signal);
       if (id !== requestId.current) return;
       setState((previous) => ({ ...previous, status: 'success', data }));
     } catch (error) {
-      if (id !== requestId.current) return;
+      if (id !== requestId.current || controller.signal.aborted) return;
       setState((previous) => ({
         ...previous,
         status: 'error',
-        error: error instanceof Error ? error.message : 'Não foi possível consultar o clima.',
+        error:
+          error instanceof WeatherServiceError
+            ? error.message
+            : 'Não foi possível concluir a consulta. Tente novamente.',
       }));
+    } finally {
+      if (activeRequest.current === controller) activeRequest.current = null;
     }
   }, []);
 

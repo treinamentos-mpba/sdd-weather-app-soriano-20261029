@@ -290,8 +290,8 @@ Validar sucesso do fluxo principal em uso mobile.
 - **Descrição:** Criar o service de forecast que consulta clima atual e cinco dias diários e normaliza dados validados para o domínio.
 - **Critérios de aceite:**
   - A chamada usa coordenadas selecionadas, métricas especificadas pelo plano, unidades canônicas (`celsius`, `kmh`, `mm`), `timezone=auto` e cinco dias.
-  - Campos ausentes ou inválidos tornam-se `null`; arrays diários são combinados por índice e datas/fuso da resposta são preservados.
-  - Resposta utilizável incompleta é marcada como parcial; nenhuma medida utilizável resulta em erro `unavailable`.
+  - Medidas ausentes ou inválidas tornam-se `null`; arrays diários são combinados por índice, dias sem data válida são omitidos e blocos ausentes não descartam dados utilizáveis do outro bloco.
+  - Preservar o fuso válido da resposta; se ausente ou inválido, usar o fuso válido da cidade ou `UTC`. Nenhuma medida utilizável resulta em erro `unavailable`.
   - HTTP, JSON malformado, estrutura incompatível, rede e timeout são classificados sem apresentar erro como sucesso.
 - **Dependências:** T-02, T-03, T-04
 - **Arquivos prováveis:** `src/services/weatherService.ts`

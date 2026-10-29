@@ -49,12 +49,12 @@ export default function SearchBar({ onSearch, disabled = false }: SearchBarProps
           aria-invalid={error !== null}
           aria-describedby={error ? errorId : undefined}
           placeholder="Ex.: Salvador"
-          className="min-h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-night-900 px-4 py-2 text-white placeholder:text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-500 bg-night-900 px-4 py-2 text-white placeholder:text-slate-400 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400 disabled:cursor-not-allowed disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={disabled}
-          className="min-h-11 rounded-xl bg-accent-400 px-5 py-2 font-semibold text-night-900 hover:bg-accent-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-accent-400 px-5 py-2 font-semibold text-night-900 transition-colors enabled:hover:bg-accent-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Buscar
         </button>

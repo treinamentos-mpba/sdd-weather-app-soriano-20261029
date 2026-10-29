@@ -220,16 +220,58 @@ describe('getWeather', () => {
   });
 
   it.each([
-    { time: undefined },
-    { time: [null, null, null, null, null] },
-    { time: ['2026-02-30', '2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'] },
-  ])('rejeita previsão sem datas válidas: %j', async ({ time }) => {
+    { time: undefined, expectedDates: [] },
+    { time: [null, null, null, null, null], expectedDates: [] },
+    {
+      time: ['2026-02-30', '2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'],
+      expectedDates: ['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'],
+    },
+  ])('ignora datas inválidas ou ausentes sem descartar o clima atual: %j', async ({
+    time,
+    expectedDates,
+  }) => {
     mockResponse({ ...forecastResponse(), daily: { time } });
 
-    await expect(getWeather(city)).rejects.toBeInstanceOf(WeatherServiceError);
+    const weather = await getWeather(city);
+
+    expect(weather.current.temperatureC).toBe(17.4);
+    expect(weather.forecast.map((day) => day.date)).toEqual(expectedDates);
   });
 
-  it('rejeita resposta sem nenhuma medida meteorológica utilizável', async () => {
+  it('mantém a previsão quando o bloco current está ausente', async () => {
+    const body = forecastResponse();
+    mockResponse({
+      ...body,
+      current: null,
+      daily: { ...body.daily, temperature_2m_max: [20, 21, 22, 23, 24] },
+    });
+
+    const weather = await getWeather(city);
+
+    expect(Object.values(weather.current)).toEqual(Array(8).fill(null));
+    expect(weather.forecast.map((day) => day.temperatureMaxC)).toEqual([20, 21, 22, 23, 24]);
+  });
+
+  it('mantém o clima atual quando o bloco daily está ausente', async () => {
+    mockResponse({ ...forecastResponse(), daily: null });
+
+    const weather = await getWeather(city);
+
+    expect(weather.current.temperatureC).toBe(17.4);
+    expect(weather.forecast).toEqual([]);
+  });
+
+  it('usa o fuso da cidade ou UTC quando timezone está ausente ou inválido', async () => {
+    mockResponse({ ...forecastResponse(), timezone: null });
+    await expect(getWeather(city)).resolves.toMatchObject({ timezone: city.timezone });
+
+    mockResponse({ ...forecastResponse(), timezone: 'fuso-invalido' });
+    await expect(getWeather({ ...city, timezone: undefined })).resolves.toMatchObject({
+      timezone: 'UTC',
+    });
+  });
+
+  it('rejeita resposta sem medidas utilizáveis com mensagem amigável', async () => {
     mockResponse({
       timezone: 'America/Los_Angeles',
       current: {},
@@ -238,28 +280,35 @@ describe('getWeather', () => {
       },
     });
 
-    await expect(getWeather(city)).rejects.toThrow('Resposta meteorológica sem dados utilizáveis.');
-  });
-
-  it.each([undefined, '', null])('rejeita fuso ausente ou inválido: %j', async (timezone) => {
-    mockResponse({ ...forecastResponse(), timezone });
-
-    await expect(getWeather(city)).rejects.toBeInstanceOf(WeatherServiceError);
+    await expect(getWeather(city)).rejects.toMatchObject({
+      kind: 'unavailable',
+      message: 'Não há dados meteorológicos disponíveis para essa cidade. Tente novamente mais tarde.',
+    });
   });
 
   it.each([400, 429, 500])('rejeita HTTP %s antes de ler o JSON', async (status) => {
     const { json } = mockResponse({}, status);
 
-    await expect(getWeather(city)).rejects.toMatchObject({ name: 'WeatherServiceError', status });
+    await expect(getWeather(city)).rejects.toMatchObject({
+      name: 'WeatherServiceError',
+      kind: 'api',
+      status,
+      message:
+        status === 429
+          ? 'O serviço recebeu muitas consultas. Aguarde um pouco e tente novamente.'
+          : 'O serviço de clima está indisponível no momento. Tente novamente mais tarde.',
+    });
     expect(json).not.toHaveBeenCalled();
   });
 
-  it('propaga erro de JSON malformado', async () => {
+  it('normaliza JSON malformado sem expor detalhes técnicos', async () => {
     const { json } = mockResponse({});
-    const error = new SyntaxError('JSON inválido');
-    json.mockRejectedValue(error);
+    json.mockRejectedValue(new SyntaxError('Unexpected token'));
 
-    await expect(getWeather(city)).rejects.toBe(error);
+    await expect(getWeather(city)).rejects.toMatchObject({
+      kind: 'invalid-response',
+      message: 'O serviço retornou uma resposta inesperada. Tente novamente mais tarde.',
+    });
   });
 });
 
@@ -329,8 +378,12 @@ describe('searchCities', () => {
 
     await expect(searchCities('Salvador')).rejects.toMatchObject({
       name: 'WeatherServiceError',
+      kind: 'api',
       status,
-      message: `Não foi possível buscar cidades (HTTP ${status}).`,
+      message:
+        status === 429
+          ? 'O serviço recebeu muitas consultas. Aguarde um pouco e tente novamente.'
+          : 'O serviço de clima está indisponível no momento. Tente novamente mais tarde.',
     });
     expect(json).not.toHaveBeenCalled();
   });
@@ -342,17 +395,44 @@ describe('searchCities', () => {
     { results: {} },
     { results: [{}] },
     { results: [{ id: 1, name: 'Cidade', latitude: '0', longitude: 0 }] },
-    { results: [{ id: 1, name: 'Cidade', latitude: 0, longitude: 0, country: null }] },
   ])('rejeita estrutura inválida em vez de retornar sucesso vazio: %j', async (body) => {
     mockResponse(body);
 
     await expect(searchCities('Salvador')).rejects.toBeInstanceOf(WeatherServiceError);
   });
+
+  it('omite metadados opcionais nulos sem invalidar a cidade', async () => {
+    mockResponse({
+      results: [
+        {
+          id: 1,
+          name: 'Cidade',
+          latitude: 0,
+          longitude: 0,
+          country: null,
+          admin1: null,
+          timezone: null,
+        },
+      ],
+    });
+
+    await expect(searchCities('Cidade')).resolves.toEqual([
+      { id: '1', name: 'Cidade', latitude: 0, longitude: 0 },
+    ]);
+  });
 });
 
 describe.each([
-  { name: 'searchCities', request: () => searchCities('Salvador'), body: () => ({ results: [] }) },
-  { name: 'getWeather', request: () => getWeather(city), body: forecastResponse },
+  {
+    name: 'searchCities',
+    request: (signal?: AbortSignal) => searchCities('Salvador', signal),
+    body: () => ({ results: [] }),
+  },
+  {
+    name: 'getWeather',
+    request: (signal?: AbortSignal) => getWeather(city, signal),
+    body: forecastResponse,
+  },
 ])('$name com fetchWithTimeout', ({ request, body }) => {
   it('aborta exatamente após 10 segundos e limpa o timer', async () => {
     vi.useFakeTimers();
@@ -377,7 +457,9 @@ describe.each([
     const pending = request();
     const rejected = expect(pending).rejects.toMatchObject({
       name: 'WeatherServiceError',
-      message: 'A requisição demorou demais.',
+      kind: 'timeout',
+      message:
+        'A consulta ultrapassou o limite de 10 segundos. Verifique sua conexão e tente novamente.',
     });
 
     await vi.advanceTimersByTimeAsync(9_999);
@@ -390,25 +472,78 @@ describe.each([
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('converte AbortError em WeatherServiceError e limpa o timer', async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('Aborted', 'AbortError')));
-
-    const pending = request();
-
-    await expect(pending).rejects.toBeInstanceOf(WeatherServiceError);
-    await expect(pending).rejects.toThrow('A requisição demorou demais.');
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('converte falha de rede em WeatherServiceError e limpa o timer', async () => {
+  it('classifica falha de transporte como possível rede offline', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
 
     const pending = request();
 
-    await expect(pending).rejects.toBeInstanceOf(WeatherServiceError);
-    await expect(pending).rejects.toThrow('Falha de rede.');
+    await expect(pending).rejects.toMatchObject({
+      name: 'WeatherServiceError',
+      kind: 'network',
+      message:
+        'Não foi possível conectar ao serviço de clima. Verifique sua conexão e tente novamente.',
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('propaga cancelamento intencional sem apresentá-lo como falha', async () => {
+    vi.useFakeTimers();
+    const externalController = new AbortController();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, options: RequestInit) => {
+        const signal = options.signal;
+        if (!signal) throw new Error('AbortSignal obrigatório no teste.');
+        return new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+        });
+      }),
+    );
+
+    const pending = request(externalController.signal);
+    const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    externalController.abort();
+
+    await rejected;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('mantém o timeout ativo enquanto lê o JSON', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, options: RequestInit) => {
+        const signal = options.signal;
+        if (!signal) throw new Error('AbortSignal obrigatório no teste.');
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener(
+                'abort',
+                () => reject(new DOMException('Aborted', 'AbortError')),
+                { once: true },
+              );
+            }),
+        });
+      }),
+    );
+
+    const pending = request();
+    const rejected = expect(pending).rejects.toMatchObject({
+      kind: 'timeout',
+      message:
+        'A consulta ultrapassou o limite de 10 segundos. Verifique sua conexão e tente novamente.',
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await rejected;
     expect(vi.getTimerCount()).toBe(0);
   });
 

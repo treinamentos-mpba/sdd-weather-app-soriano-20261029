@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import CurrentWeather from './components/CurrentWeather';
 import ForecastList from './components/ForecastList';
 import SearchBar from './components/SearchBar';
@@ -12,13 +12,28 @@ import type { Unit } from './types/weather';
 export default function App() {
   const [unit, setUnit] = useState<Unit>('celsius');
   const { status, data, error, search, retry } = useWeather();
-  const receivedAt = data
-    ? new Intl.DateTimeFormat('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-        timeZone: data.timezone,
-      }).format(new Date(data.receivedAt))
-    : null;
+  const mainRef = useRef<HTMLElement>(null);
+  const hadPendingOperation = useRef(false);
+  const receivedAt = useMemo(
+    () =>
+      data
+        ? new Intl.DateTimeFormat('pt-BR', {
+            dateStyle: 'short',
+            timeStyle: 'short',
+            timeZone: data.timezone,
+          }).format(new Date(data.receivedAt))
+        : null,
+    [data],
+  );
+
+  useEffect(() => {
+    if (status === 'loading') {
+      hadPendingOperation.current = true;
+    } else if (hadPendingOperation.current) {
+      hadPendingOperation.current = false;
+      mainRef.current?.focus();
+    }
+  }, [status]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-night-900 via-night-800 to-night-900 font-sans text-white">
@@ -42,7 +57,13 @@ export default function App() {
           <p className="text-slate-300">Consulte o clima atual e a previsão para sua cidade.</p>
           <SearchBar onSearch={search} disabled={status === 'loading'} />
         </header>
-        <main id="main-content" tabIndex={-1} className="flex-1 space-y-6">
+        <main
+          ref={mainRef}
+          id="main-content"
+          tabIndex={-1}
+          aria-busy={status === 'loading'}
+          className="flex-1 space-y-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
+        >
           {status === 'idle' && (
             <EmptyState
               title="Como está o tempo?"
@@ -71,7 +92,7 @@ export default function App() {
           Feito com React e Tailwind CSS · Dados de{' '}
           <a
             href="https://open-meteo.com/"
-            className="rounded text-accent-400 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
+            className="rounded text-accent-400 underline underline-offset-4 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
           >
             Open-Meteo
           </a>

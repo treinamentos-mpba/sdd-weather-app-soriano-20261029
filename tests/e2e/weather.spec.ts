@@ -54,10 +54,56 @@ test('busca uma cidade, exibe a previsão e converte a temperatura para Fahrenhe
   await page.getByRole('button', { name: 'Buscar' }).click();
 
   await expect(page.getByRole('heading', { name: 'Clima atual em Salvador' })).toBeVisible();
+  await expect(page.getByRole('main')).toBeFocused();
+  await expect(page.getByRole('main')).toHaveAttribute('aria-busy', 'false');
   await expect(page.getByRole('region', { name: 'Previsão de 5 dias' })).toBeVisible();
-  await page.getByRole('button', { name: '°F' }).click();
+  await page.getByRole('button', { name: 'Graus Fahrenheit' }).click();
   await expect(page.getByText('Temperatura: 32 °F', { exact: true })).toBeVisible();
 });
+
+test('não consulta geocoding para busca vazia ou formada só por espaços', async ({ page }) => {
+  let geocodingRequests = 0;
+  await page.route('https://geocoding-api.open-meteo.com/**', (route) => {
+    geocodingRequests += 1;
+    return route.fulfill({ json: { results: [cityResult] } });
+  });
+
+  await page.goto('/');
+  const searchbox = page.getByRole('searchbox', { name: 'Cidade' });
+  const searchButton = page.getByRole('button', { name: 'Buscar' });
+
+  await searchButton.click();
+  await expect(page.getByRole('alert')).toContainText('Digite pelo menos 2 caracteres');
+  await expect(searchbox).toHaveAttribute('aria-invalid', 'true');
+  expect(geocodingRequests).toBe(0);
+
+  await searchbox.fill('   ');
+  await searchButton.click();
+  await expect(page.getByRole('alert')).toContainText('Digite pelo menos 2 caracteres');
+  expect(geocodingRequests).toBe(0);
+});
+
+for (const name of ['São Paulo', 'Baden-Baden', 'D’Oeste']) {
+  test(`busca cidade com caracteres especiais: ${name}`, async ({ page }) => {
+    const geocodingQueries: string[] = [];
+    await page.route('https://geocoding-api.open-meteo.com/**', (route) => {
+      geocodingQueries.push(new URL(route.request().url()).searchParams.get('name') ?? '');
+      return route.fulfill({
+        json: { results: [{ ...cityResult, name }] },
+      });
+    });
+    await page.route('https://api.open-meteo.com/**', (route) =>
+      route.fulfill({ json: completeForecast() }),
+    );
+
+    await page.goto('/');
+    await page.getByRole('searchbox', { name: 'Cidade' }).fill(name);
+    await page.getByRole('button', { name: 'Buscar' }).click();
+
+    await expect(page.getByRole('heading', { name: `Clima atual em ${name}` })).toBeVisible();
+    expect(geocodingQueries).toEqual([name]);
+  });
+}
 
 test('exibe estado vazio quando o geocoding não retorna results', async ({ page }) => {
   let forecastRequests = 0;
@@ -74,6 +120,7 @@ test('exibe estado vazio quando o geocoding não retorna results', async ({ page
   await page.getByRole('button', { name: 'Buscar' }).click();
 
   await expect(page.getByRole('heading', { name: 'Nenhuma cidade encontrada' })).toBeVisible();
+  await expect(page.getByRole('main')).toBeFocused();
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(forecastRequests).toBe(0);
 });
@@ -109,7 +156,9 @@ test('informa falha da previsão e permite tentar novamente', async ({ page }) =
   await page.getByRole('searchbox', { name: 'Cidade' }).fill('Salvador');
   await page.getByRole('button', { name: 'Buscar' }).click();
 
-  await expect(page.getByRole('alert')).toContainText('HTTP 503');
+  await expect(page.getByRole('alert')).toContainText(
+    'O serviço de clima está indisponível no momento. Tente novamente mais tarde.',
+  );
   await expect(page.getByRole('heading', { name: 'Clima atual em Salvador' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
 

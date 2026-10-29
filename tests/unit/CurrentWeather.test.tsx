@@ -61,6 +61,7 @@ describe('CurrentWeather', () => {
     expect(screen.getByText('Sensação térmica: Indisponível')).toBeInTheDocument();
     expect(screen.getByText('Condição indisponível')).toBeInTheDocument();
     expect(screen.queryByText(/0 (mm|hPa|km\/h)/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/NaN|undefined|null/)).not.toBeInTheDocument();
   });
 
   it('mantém dados úteis para código desconhecido e identifica medidas não finitas', () => {

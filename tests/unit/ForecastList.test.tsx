@@ -98,6 +98,7 @@ describe('ForecastCard', () => {
     expect(screen.getByText('Condição indisponível')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'quinta-feira' })).toBeInTheDocument();
     expect(screen.queryByText('0%')).not.toBeInTheDocument();
+    expect(screen.queryByText(/NaN|undefined|null/)).not.toBeInTheDocument();
   });
 
   it('usa referência explícita para não anunciar Hoje em um snapshot anterior', () => {

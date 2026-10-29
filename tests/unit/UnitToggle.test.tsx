@@ -30,11 +30,11 @@ describe('UnitToggle', () => {
     const group = screen.getByRole('group', { name: 'Unidade de temperatura' });
 
     expect(within(group).getAllByRole('button')).toHaveLength(2);
-    expect(within(group).getByRole('button', { name: '°C' })).toHaveAttribute(
+    expect(within(group).getByRole('button', { name: 'Graus Celsius' })).toHaveAttribute(
       'aria-pressed',
       String(unit === 'celsius'),
     );
-    expect(within(group).getByRole('button', { name: '°F' })).toHaveAttribute(
+    expect(within(group).getByRole('button', { name: 'Graus Fahrenheit' })).toHaveAttribute(
       'aria-pressed',
       String(unit === 'fahrenheit'),
     );
@@ -44,14 +44,20 @@ describe('UnitToggle', () => {
     const user = userEvent.setup();
     const onChange = vi.fn<(unit: Unit) => void>();
     const { rerender } = render(<UnitToggle unit="celsius" onChange={onChange} />);
-    await user.click(screen.getByRole('button', { name: '°F' }));
+    await user.click(screen.getByRole('button', { name: 'Graus Fahrenheit' }));
 
     expect(onChange).toHaveBeenCalledExactlyOnceWith('fahrenheit');
-    expect(screen.getByRole('button', { name: '°C' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Graus Celsius' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
 
     rerender(<UnitToggle unit="fahrenheit" onChange={onChange} />);
-    expect(screen.getByRole('button', { name: '°F' })).toHaveAttribute('aria-pressed', 'true');
-    await user.click(screen.getByRole('button', { name: '°C' }));
+    expect(screen.getByRole('button', { name: 'Graus Fahrenheit' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await user.click(screen.getByRole('button', { name: 'Graus Celsius' }));
     expect(onChange).toHaveBeenLastCalledWith('celsius');
     expect(onChange).toHaveBeenCalledTimes(2);
   });
@@ -60,7 +66,7 @@ describe('UnitToggle', () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<UnitToggle unit="celsius" onChange={onChange} />);
-    await user.click(screen.getByRole('button', { name: '°C' }));
+    await user.click(screen.getByRole('button', { name: 'Graus Celsius' }));
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -68,8 +74,8 @@ describe('UnitToggle', () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     const { rerender } = render(<UnitToggle unit="celsius" onChange={onChange} />);
-    const celsius = screen.getByRole('button', { name: '°C' });
-    const fahrenheit = screen.getByRole('button', { name: '°F' });
+    const celsius = screen.getByRole('button', { name: 'Graus Celsius' });
+    const fahrenheit = screen.getByRole('button', { name: 'Graus Fahrenheit' });
 
     await user.tab();
     expect(celsius).toHaveFocus();
@@ -98,7 +104,7 @@ describe('UnitToggle', () => {
         <UnitToggle unit="celsius" onChange={onChange} />
       </form>,
     );
-    await user.click(screen.getByRole('button', { name: '°F' }));
+    await user.click(screen.getByRole('button', { name: 'Graus Fahrenheit' }));
     expect(onChange).toHaveBeenCalledExactlyOnceWith('fahrenheit');
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -109,7 +115,7 @@ describe('UnitToggle', () => {
     const weatherRegion = screen.getByRole('region', { name: 'Clima atual em Salvador' });
 
     expect(within(weatherRegion).getByText('0 °C')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '°F' }));
+    await user.click(screen.getByRole('button', { name: 'Graus Fahrenheit' }));
 
     expect(within(weatherRegion).getByText('32 °F')).toBeInTheDocument();
   });

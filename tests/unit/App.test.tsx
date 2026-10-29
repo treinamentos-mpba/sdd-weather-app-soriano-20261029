@@ -31,8 +31,17 @@ describe('App integrado', () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { name: 'SDD Weather' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ir para o conteúdo' })).toHaveAttribute(
+      'href',
+      '#main-content',
+    );
+    expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'false');
     expect(screen.getByRole('searchbox', { name: 'Cidade' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: '°C' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Graus Celsius' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     expect(screen.getByRole('main')).toHaveTextContent('Como está o tempo?');
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
@@ -52,14 +61,21 @@ describe('App integrado', () => {
 
     await act(async () => search('  Salvador  '));
 
-    expect(searchMock).toHaveBeenCalledExactlyOnceWith('Salvador');
-    expect(weatherMock).toHaveBeenCalledExactlyOnceWith(MOCK_WEATHER.city);
+    const main = screen.getByRole('main');
+    expect(searchMock).toHaveBeenCalledExactlyOnceWith('Salvador', expect.any(AbortSignal));
+    expect(weatherMock).toHaveBeenCalledExactlyOnceWith(
+      MOCK_WEATHER.city,
+      expect.any(AbortSignal),
+    );
     expect(screen.getByRole('status')).toHaveTextContent('Consultando o clima...');
+    expect(main).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByRole('searchbox')).toBeDisabled();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
 
     await act(async () => resolveWeather(MOCK_WEATHER));
 
+    expect(main).toHaveAttribute('aria-busy', 'false');
+    expect(main).toHaveFocus();
     expect(screen.getByRole('searchbox')).toBeEnabled();
     expect(screen.getByRole('heading', { name: 'Clima atual em Salvador' })).toBeInTheDocument();
     expect(screen.getAllByRole('article')).toHaveLength(5);
@@ -69,11 +85,11 @@ describe('App integrado', () => {
     expect(
       document.querySelector(`time[datetime="${MOCK_WEATHER.receivedAt}"]`),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '°F' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Graus Fahrenheit' }));
     expect(screen.getByText('83 °F')).toBeInTheDocument();
     expect(screen.getAllByText(/°F/).filter((node) => node.tagName !== 'BUTTON')).toHaveLength(12);
     expect(screen.queryByText(/°C/, { selector: 'p, dd' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '°C' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Graus Celsius' }));
     expect(screen.getByText('28 °C')).toBeInTheDocument();
     expect(searchMock).toHaveBeenCalledTimes(1);
     expect(weatherMock).toHaveBeenCalledTimes(1);
@@ -103,10 +119,11 @@ describe('App integrado', () => {
   it('mostra empty sem forecast e permite uma nova busca preservando a unidade', async () => {
     searchMock.mockResolvedValueOnce([]);
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: '°F' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Graus Fahrenheit' }));
 
     await act(async () => search('Inexistente'));
 
+    expect(screen.getByRole('main')).toHaveFocus();
     expect(screen.getByRole('heading', { name: 'Nenhuma cidade encontrada' })).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('searchbox')).toBeEnabled();
@@ -122,15 +139,30 @@ describe('App integrado', () => {
     'forecast',
   ])('exibe erro de %s e ErrorState refaz a operação com retry', async (failure) => {
     if (failure === 'search')
-      searchMock.mockRejectedValueOnce(new WeatherServiceError('Falha de rede.'));
-    else weatherMock.mockRejectedValueOnce(new WeatherServiceError('A requisição demorou demais.'));
+      searchMock.mockRejectedValueOnce(
+        new WeatherServiceError(
+          'Não foi possível conectar ao serviço de clima. Verifique sua conexão e tente novamente.',
+          undefined,
+          'network',
+        ),
+      );
+    else
+      weatherMock.mockRejectedValueOnce(
+        new WeatherServiceError(
+          'A consulta ultrapassou o limite de 10 segundos. Verifique sua conexão e tente novamente.',
+          undefined,
+          'timeout',
+        ),
+      );
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: '°F' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Graus Fahrenheit' }));
 
     await act(async () => search('Salvador'));
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      failure === 'search' ? 'Falha de rede.' : 'A requisição demorou demais.',
+      failure === 'search'
+        ? 'Não foi possível conectar ao serviço de clima.'
+        : 'A consulta ultrapassou o limite de 10 segundos.',
     );
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
     expect(screen.getByRole('searchbox')).toBeEnabled();
@@ -140,7 +172,7 @@ describe('App integrado', () => {
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByText('83 °F')).toBeInTheDocument();
-    expect(searchMock).toHaveBeenNthCalledWith(2, 'Salvador');
+    expect(searchMock).toHaveBeenNthCalledWith(2, 'Salvador', expect.any(AbortSignal));
     expect(weatherMock).toHaveBeenCalledTimes(failure === 'search' ? 1 : 2);
   });
 });
