@@ -72,8 +72,8 @@ export function useWeather() {
         error: null,
         query: operation.type === 'search' ? operation.name : previous.query,
         cities: operation.type === 'search' ? [] : previous.cities,
-        isStale: false,
-        cacheAgeMs: null,
+        isStale: keepSnapshot ? previous.isStale : false,
+        cacheAgeMs: keepSnapshot ? previous.cacheAgeMs : null,
       };
     });
 
