@@ -30,6 +30,12 @@ Celsius é a unidade inicial.
 
 ## Functional Requirements
 
+Complemento para o hero de clima atual: exibir também pressão na superfície em
+hPa, ou “Indisponível” quando ausente, preservando as demais métricas de RF-03.
+
+Complemento para RF-04: cada resumo diário inclui probabilidade de chuva em
+porcentagem (0 a 100); quando ausente ou inválida, exibir “Indisponível”.
+
 | ID | Requisito | Prioridade |
 | --- | --- | --- |
 | RF-01 | Busca de cidades: permitir pesquisar por envio explícito do nome da cidade, com pelo menos dois caracteres após remover espaços externos; apresentar no máximo cinco resultados de geocodificação. Aceitar acentos e caracteres especiais, sem compromisso de corrigir erros de digitação ou equiparar consultas com e sem acento. | Must |

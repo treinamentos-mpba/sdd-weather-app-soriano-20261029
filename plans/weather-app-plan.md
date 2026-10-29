@@ -67,11 +67,12 @@ src/
 │   │   ├── LoadingState.tsx    # feedback de carregamento
 │   │   ├── EmptyState.tsx      # busca sem resultados
 │   │   └── ErrorState.tsx      # falha e ação de retry
-│   ├── SearchForm.tsx          # entrada e envio explícito da busca
+│   ├── SearchBar.tsx           # entrada e envio explícito da busca
 │   ├── CityResults.tsx         # resultados selecionáveis com contexto regional
 │   ├── CurrentWeather.tsx      # condições atuais
 │   ├── WeatherRefreshButton.tsx # atualização explícita do clima
-│   └── ForecastList.tsx        # resumos diários
+│   ├── ForecastList.tsx        # lista responsiva de resumos diários
+│   └── ForecastCard.tsx        # data, condição, temperaturas e chance de chuva
 ├── hooks/
 │   └── useWeather.ts           # estado e coordenação do fluxo da tela
 ├── services/
@@ -79,8 +80,8 @@ src/
 │   └── weatherService.ts       # consulta, adaptação e cache meteorológico
 ├── lib/
 │   ├── temperature.ts          # conversão e arredondamento de temperatura
-│   ├── weatherCode.ts          # código WMO para condição em pt-BR
-│   └── formatters.ts           # formatação de datas e números pt-BR
+│   ├── weatherCodes.ts         # código WMO para condição em pt-BR e ícone
+│   └── format.ts               # datas locais e probabilidade de chuva em pt-BR
 ├── types/
 │   └── weather.ts              # tipos de domínio e contratos entre camadas
 ├── styles/                     # Tailwind e estilos globais
@@ -96,6 +97,13 @@ mockado, hooks com services substituídos e componentes com props/ações
 controladas, além de reservar E2E para validar o fluxo integrado.
 
 ## Data Model
+
+Para desenvolver a UI, `src/types/weather.ts` também expõe `Unit`,
+`ForecastDay` e `WeatherData`, equivalentes a `TemperatureUnit`, `DailyForecast`
+e `WeatherSnapshot`, respectivamente. Os campos e a semântica abaixo permanecem
+os mesmos. `src/mocks/weather.ts` exporta `MOCK_WEATHER`, um `WeatherData`
+fictício e determinístico de Salvador, com condições atuais e cinco datas
+consecutivas (29/10/2026 a 02/11/2026), sem acesso à API.
 
 Contratos de domínio sugeridos. Respostas externas da API devem ser tratadas
 como dados não confiáveis nos services e validadas antes de serem normalizadas.
@@ -120,6 +128,7 @@ interface CurrentWeather {
   windSpeedKmh: number | null;
   uvIndex: number | null;
   precipitationMm: number | null;
+  pressureHpa: number | null; // pressão na superfície em hPa
   weatherCode: number | null;
 }
 
@@ -127,6 +136,7 @@ interface DailyForecast {
   date: string; // YYYY-MM-DD no fuso da localidade
   temperatureMaxC: number | null;
   temperatureMinC: number | null;
+  precipitationProbability: number | null; // porcentagem de 0 a 100
   weatherCode: number | null;
 }
 
@@ -187,6 +197,22 @@ type WeatherState =
   arredondar ao inteiro mais próximo somente ao formatar (RF-05).
 
 ## Data Flow
+
+### Etapa de UI sem API
+
+`App` mantém `unit` e o estado de demonstração (`idle`, `loading`, `empty`,
+`error`, `success`) localmente. O header reúne marca, `SearchBar`, `UnitToggle`
+e um seletor explicitamente identificado como demonstração. Buscar Salvador
+(ignorando maiúsculas/minúsculas) simula 600 ms de carregamento e mostra
+`MOCK_WEATHER`; outras consultas produzem estado vazio, sem inventar cidades.
+O seletor permite visualizar erro e testar retry da última consulta. Timers são
+cancelados ao trocar de estado ou desmontar. As temperaturas são convertidas
+somente pelos componentes na renderização, e a unidade é preservada ao alternar
+estados. Não há rede, persistência ou geocodificação nesta etapa. O snapshot
+fixo fornece a referência das datas; o layout identifica os dados como fictícios.
+`main.tsx` monta a aplicação e importa `styles/index.css` com as diretivas Tailwind.
+
+### Integração futura
 
 ```mermaid
 flowchart TD
@@ -280,8 +306,8 @@ flowchart TD
 
 - URL: `GET https://api.open-meteo.com/v1/forecast`
 - Parâmetros relevantes: `latitude` e `longitude` da cidade selecionada;
-  `current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,uv_index`;
-  `daily=weather_code,temperature_2m_max,temperature_2m_min`;
+  `current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,uv_index,surface_pressure`;
+  `daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max`;
   `temperature_unit=celsius`, `wind_speed_unit=kmh`,
   `precipitation_unit=mm`, `timezone=auto` e `forecast_days=5`.
   `current` e `daily` especificam as medidas retornadas; `timezone=auto` pede o
@@ -300,7 +326,8 @@ flowchart TD
       "precipitation": 0.0,
       "weather_code": 2,
       "wind_speed_10m": 11.5,
-      "uv_index": 1.2
+      "uv_index": 1.2,
+      "surface_pressure": 1015.2
     },
     "daily": {
       "time": [
@@ -312,7 +339,8 @@ flowchart TD
       ],
       "temperature_2m_max": [19.2, 20.1, 18.7, 17.9, 18.4],
       "temperature_2m_min": [13.8, 14.2, 13.5, 12.9, 13.1],
-      "weather_code": [2, 3, 61, 2, 1]
+      "weather_code": [2, 3, 61, 2, 1],
+      "precipitation_probability_max": [20, 40, 90, 20, 10]
     }
   }
   ```
@@ -320,10 +348,11 @@ flowchart TD
 - Mapeamento para `WeatherSnapshot`: `timezone` preenche o fuso do snapshot;
   os campos de `current` alimentam respectivamente
   `temperatureC`, `humidityPercent`, `apparentTemperatureC`,
-  `precipitationMm`, `weatherCode`, `windSpeedKmh` e `uvIndex` em
+  `precipitationMm`, `weatherCode`, `windSpeedKmh`, `uvIndex` e `pressureHpa` em
   `CurrentWeather`. Para `DailyForecast`, combinar por índice `daily.time`,
-  `temperature_2m_max`, `temperature_2m_min` e `weather_code`, atribuindo-os a
-  `date`, `temperatureMaxC`, `temperatureMinC` e `weatherCode`. Os arrays
+  `temperature_2m_max`, `temperature_2m_min`, `weather_code` e
+  `precipitation_probability_max`, atribuindo-os a `date`, `temperatureMaxC`,
+  `temperatureMinC`, `weatherCode` e `precipitationProbability`. Os arrays
   `daily` são paralelos: os valores na mesma posição pertencem ao mesmo dia.
 - Validar os dados antes de normalizar. Campo ausente ou inválido vira `null`;
   datas/fuso vêm da resposta e não devem ser recalculados no fuso do navegador.

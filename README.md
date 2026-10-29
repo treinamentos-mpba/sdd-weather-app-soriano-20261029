@@ -102,6 +102,41 @@ Decisões-chave:
 
 ---
 
+## Desenvolvimento da UI sem API
+
+Execute `pnpm dev` para abrir o layout completo. Busque **Salvador** para ver o
+clima e a previsão após um carregamento simulado de 600 ms; outras cidades
+mostram o estado vazio. O seletor **Estado da demonstração** permite visualizar
+inicial, carregando, vazio, erro e sucesso. “Tentar novamente” repete a última
+consulta (Salvador por padrão). O toggle °C/°F preserva a unidade entre estados
+e converte somente na renderização. Não há requisições à API nem persistência
+nesta etapa; todos os dados estão identificados como fictícios.
+
+Importe o mock diretamente; não é necessário iniciar serviços ou configurar rede:
+
+```ts
+import { MOCK_WEATHER } from './mocks/weather';
+import type { WeatherData } from './types/weather';
+
+const weather: WeatherData = MOCK_WEATHER;
+```
+
+O exemplo considera um arquivo na raiz de `src/`. Os dados são fictícios e
+fixos: Salvador, clima atual e cinco dias de 29/10/2026 a 02/11/2026. Temperaturas
+estão em Celsius, vento em km/h, umidade em porcentagem, precipitação em mm
+e pressão na superfície (`pressureHpa`) em hPa;
+medidas indisponíveis podem ser representadas por `null`. `receivedAt` é um
+instante ISO 8601 e as datas da previsão são locais no fuso `America/Bahia`.
+Não apresente o mock como uma consulta real ou como dados atualizados.
+
+A previsão pode ser exibida com
+`<ForecastList forecast={MOCK_WEATHER.forecast} unit="celsius" />`, importando
+`ForecastList` de `src/components/ForecastList`. Os cards incluem a probabilidade
+de chuva em porcentagem (`precipitationProbability`, ou `null` se indisponível).
+O primeiro dia do snapshot é a referência padrão para Hoje/Amanhã. Para dados
+anteriores ou parciais, passe `referenceDate="YYYY-MM-DD"` com a data atual no
+fuso da cidade; os rótulos são calculados pelas datas, não pela posição no grid.
+
 ## Stack
 
 - **TypeScript** (strict) · **React** · **Vite**

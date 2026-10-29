@@ -152,6 +152,7 @@ Validar sucesso do fluxo principal em uso mobile.
   - `src/types/weather.ts` define `City`, `CurrentWeather`, `DailyForecast`, `WeatherSnapshot`, `CachedWeather`, `TemperatureUnit`, `SearchState`, `WeatherState` e `RequestError`.
   - Ausência de medida meteorológica é representada como `null`; sucesso parcial, cache desatualizado e categorias de erro são representáveis sem valores inventados.
   - Os tipos compilam em TypeScript strict sem casts inseguros.
+  - Para a etapa de UI, expor também `Unit`, `ForecastDay` e `WeatherData`, compatíveis com os contratos do plano, e `MOCK_WEATHER` em `src/mocks/weather.ts`, com cidade, clima atual e exatamente cinco dias consecutivos de dados fictícios.
 - **Dependências:** T-01
 - **Arquivos prováveis:** `src/types/weather.ts`
 - **Rastreabilidade:** RF-01 a RF-09, AC-04, AC-18 a AC-23
@@ -164,7 +165,7 @@ Validar sucesso do fluxo principal em uso mobile.
   - Código desconhecido produz uma indicação segura de condição indisponível e não impede a exibição das demais medidas.
   - A função não depende de React, rede ou estado global.
 - **Dependências:** T-02
-- **Arquivos prováveis:** `src/lib/weatherCode.ts`
+- **Arquivos prováveis:** `src/lib/weatherCodes.ts`
 - **Rastreabilidade:** RF-03, RF-04, RNF-07, AC-03
 
 ### T-04 — Formatar datas e números no fuso da localidade
@@ -175,7 +176,7 @@ Validar sucesso do fluxo principal em uso mobile.
   - Horários recebidos são formatados no fuso da cidade; números usam convenções pt-BR.
   - Funções de formatação são determinísticas e não fazem I/O.
 - **Dependências:** T-02
-- **Arquivos prováveis:** `src/lib/formatters.ts`
+- **Arquivos prováveis:** `src/lib/format.ts`
 - **Rastreabilidade:** RF-04, RF-09, RNF-07, AC-05, AC-17
 
 ### T-05 — Criar o shell inicial da aplicação
@@ -184,6 +185,7 @@ Validar sucesso do fluxo principal em uso mobile.
 - **Critérios de aceite:**
   - `App` renderiza um shell inicial sem erros.
   - O shell não depende da API.
+  - Na etapa mock, o layout reúne marca, busca, unidade e os cinco estados de demonstração; Salvador simula sucesso após 600 ms, outras cidades ficam sem resultados, e o seletor permite testar erro/retry sem rede. A unidade permanece como estado de UI e não altera o mock.
 - **Dependências:** T-01
 - **Arquivos prováveis:** `src/App.tsx`
 - **Rastreabilidade:** RNF-01, RNF-08
@@ -256,7 +258,7 @@ Validar sucesso do fluxo principal em uso mobile.
   - Testes cobrem códigos WMO conhecidos e desconhecidos.
   - Os testes passam sem acesso à rede.
 - **Dependências:** T-03
-- **Arquivos prováveis:** `src/lib/weatherCode.test.ts`
+- **Arquivos prováveis:** `tests/unit/weatherCodes.test.ts`
 - **Rastreabilidade:** RF-03, RF-04, RNF-07, AC-03
 
 ### T-13 — Testar formatação de datas e números
@@ -374,7 +376,8 @@ Validar sucesso do fluxo principal em uso mobile.
   - Envio explícito por botão ou Enter inicia busca; digitação isolada não inicia rede.
   - Erro de validação é anunciado e associado ao campo sem depender apenas de cor.
 - **Dependências:** T-06, T-20
-- **Arquivos prováveis:** `src/components/SearchForm.tsx`
+- **Arquivos prováveis:** `src/components/SearchBar.tsx`
+- **Contrato da UI:** `onSearch(city: string)` recebe a consulta válida sem espaços externos; `disabled` bloqueia edição e envio. O formulário expõe `role="search"`.
 - **Rastreabilidade:** RF-01, RNF-03, RNF-09, AC-01, AC-20
 
 ### T-23 — Apresentar resultados selecionáveis de cidade
@@ -393,6 +396,7 @@ Validar sucesso do fluxo principal em uso mobile.
 - **Descrição:** Implementar o componente acessível de carregamento da busca e da consulta meteorológica.
 - **Critérios de aceite:**
   - Carregamento é anunciado acessivelmente e removido ao concluir ou falhar.
+  - `LoadingState` usa `role="status"`, recebe `message` opcional e respeita movimento reduzido; o pai controla sua montagem.
 - **Dependências:** T-06, T-20
 - **Arquivos prováveis:** `src/components/states/LoadingState.tsx`
 - **Rastreabilidade:** RF-07, RNF-03, AC-13 a AC-16
@@ -403,6 +407,7 @@ Validar sucesso do fluxo principal em uso mobile.
 - **Critérios de aceite:**
   - O estado vazio informa que nenhuma cidade foi encontrada e permite iniciar uma nova busca.
   - O componente não é apresentado como erro técnico.
+  - `EmptyState` usa `role="status"` e recebe `title` e `hint` opcionais; por padrão informa ausência de cidades e orienta corrigir a consulta no formulário de busca, que permanece disponível na composição.
 - **Dependências:** T-06, T-20
 - **Arquivos prováveis:** `src/components/states/EmptyState.tsx`
 - **Rastreabilidade:** RF-07, RNF-03, AC-14
@@ -414,6 +419,7 @@ Validar sucesso do fluxo principal em uso mobile.
   - Erros exibem mensagem pt-BR compreensível e ação de retry sem detalhes técnicos.
   - Cache antigo é identificado como desatualizado e informa horário de recebimento e idade.
   - Timeout e HTTP 429 têm mensagem identificável.
+  - `ErrorState` recebe `message` em pt-BR e `onRetry`; anuncia a mensagem com `role="alert"` e oferece botão “Tentar novamente”. Classificação de erros e apresentação do cache ficam a cargo da composição/hook.
 - **Dependências:** T-06, T-20
 - **Arquivos prováveis:** `src/components/states/ErrorState.tsx`
 - **Rastreabilidade:** RF-07, RF-09, RNF-03, RNF-04, RNF-08, AC-15 a AC-19
@@ -423,6 +429,7 @@ Validar sucesso do fluxo principal em uso mobile.
 - **Descrição:** Criar apresentação das condições atuais, convertendo todas as temperaturas pela unidade escolhida.
 - **Critérios de aceite:**
   - Exibe cidade, temperatura, condição em pt-BR, sensação térmica, umidade, vento, UV e precipitação com rótulos e unidades.
+  - O hero recebe `city`, `current` e `unit`; usa `lib/weatherCodes` para condição/ícone e `lib/temperature` para temperaturas. Inclui pressão na superfície (`pressureHpa`) em hPa ou “Indisponível”. Fonte e horário permanecem na composição da tela, pois não fazem parte dessas props.
   - Campo ausente ou inválido, inclusive UV e precipitação, aparece como “Indisponível”, nunca como zero.
   - Todas as temperaturas refletem a unidade atual; fonte Open-Meteo e horário de recebimento são exibidos no fuso local.
 - **Dependências:** T-02, T-03, T-04, T-10, T-21
@@ -436,8 +443,10 @@ Validar sucesso do fluxo principal em uso mobile.
   - Com cinco ou mais dias válidos, exibe exatamente cinco dias consecutivos, do dia local atual até quatro dias depois, cada um com data, máxima, mínima e condição.
   - Datas permanecem no fuso da localidade e temperaturas usam a mesma unidade da tela.
   - Com menos de cinco dias válidos, exibe somente os disponíveis, identifica a previsão como incompleta e não cria dias fictícios; campos ausentes aparecem como “Indisponível”.
+  - `ForecastList` recebe `forecast`, `unit` e `referenceDate` opcional (data local de hoje; padrão: primeiro dia do snapshot). `ForecastCard` recebe `day`, `unit` e `referenceDate`. O rótulo vem de `lib/format`, com Hoje/Amanhã por diferença de datas e dia da semana nos demais casos.
+  - Cada card mostra ícone e condição WMO, máxima/mínima na unidade atual e `precipitationProbability` em porcentagem ou “Indisponível”; a lista usa `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5`.
 - **Dependências:** T-02, T-03, T-04, T-10, T-21
-- **Arquivos prováveis:** `src/components/ForecastList.tsx`
+- **Arquivos prováveis:** `src/components/ForecastList.tsx`, `src/components/ForecastCard.tsx`
 - **Rastreabilidade:** RF-04, RF-05, RNF-07, AC-05, AC-06, AC-09, AC-21
 
 ### T-29 — Implementar controles de unidade e atualização
@@ -445,6 +454,7 @@ Validar sucesso do fluxo principal em uso mobile.
 - **Descrição:** Adicionar controles acessíveis para alternar °C/°F e atualizar explicitamente os dados da cidade selecionada.
 - **Critérios de aceite:**
   - Controle de unidade identifica a opção selecionada e não inicia requisição.
+  - `UnitToggle` recebe `unit: Unit` e `onChange(unit: Unit)`, usa dois botões °C/°F com `aria-pressed` em um `role="group"` nomeado e oferece Tab/Shift+Tab para navegar e Enter/Espaço para ativar. A seleção é controlada pelo componente pai; acionar a opção ativa não emite mudança.
   - Ação “Atualizar” só aparece habilitada com cidade selecionada, comunica carregamento e ignora cache.
   - Se a atualização falhar, retry também ignora cache e o snapshot anterior permanece identificado como desatualizado.
 - **Dependências:** T-21, T-24
@@ -502,7 +512,7 @@ Validar sucesso do fluxo principal em uso mobile.
   - Testes verificam os rótulos do formulário e envio por botão/Enter.
   - Testes verificam resultados com contexto regional e seleção explícita por teclado ou toque.
 - **Dependências:** T-22, T-23
-- **Arquivos prováveis:** `src/components/SearchForm.test.tsx`, `src/components/CityResults.test.tsx`
+- **Arquivos prováveis:** `tests/unit/SearchBar.test.tsx`, `src/components/CityResults.test.tsx`
 - **Rastreabilidade:** RF-01, RF-02, RF-08, RNF-03, AC-01, AC-02, AC-07, AC-08, AC-20
 
 ### T-34 — Testar componente de carregamento
