@@ -77,8 +77,8 @@ export function useWeather() {
       };
     });
 
+    let city: City | undefined;
     try {
-      let city: City | undefined;
       if (operation.type === 'search') {
         if (operation.name.length < 2) {
           setState((previous) => ({
