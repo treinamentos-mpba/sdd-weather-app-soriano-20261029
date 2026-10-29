@@ -142,6 +142,7 @@ describe('useWeather', () => {
       error: networkMessage,
       data: null,
     });
+    expect(cachedWeatherMock).not.toHaveBeenCalled();
 
     await act(() => result.current.retry());
 
@@ -162,6 +163,7 @@ describe('useWeather', () => {
       error: timeoutMessage,
       cities: [city, otherCity],
     });
+    expect(cachedWeatherMock).toHaveBeenCalledExactlyOnceWith(city);
 
     await act(() => result.current.retry());
 
@@ -181,6 +183,7 @@ describe('useWeather', () => {
     const { result } = renderHook(() => useWeather());
     await act(() => result.current.selectCity(otherCity));
     expect(result.current.status).toBe('error');
+    expect(cachedWeatherMock).toHaveBeenCalledExactlyOnceWith(otherCity);
     weatherMock.mockResolvedValue(otherWeather);
 
     await act(() => result.current.retry());
@@ -211,6 +214,7 @@ describe('useWeather', () => {
       isStale: true,
       cacheAgeMs: 65_000,
     });
+    expect(cachedWeatherMock).toHaveBeenCalledExactlyOnceWith(city);
 
     weatherMock.mockResolvedValue(otherWeather);
     await act(() => result.current.retry());
