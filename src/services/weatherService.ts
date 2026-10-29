@@ -164,7 +164,7 @@ function resolveTimezone(value: unknown, fallback?: string): string {
 }
 
 function getWeatherCacheKey(city: City): string {
-  return `${city.latitude},${city.longitude}`;
+  return `${city.id}:${city.latitude},${city.longitude}`;
 }
 
 export function getCachedWeather(city: City): CachedWeather | null {
