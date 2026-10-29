@@ -1,10 +1,28 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import CurrentWeather from '../../src/components/CurrentWeather';
 import UnitToggle from '../../src/components/UnitToggle';
+import { MOCK_WEATHER } from '../../src/mocks/weather';
 import type { Unit } from '../../src/types/weather';
 
 afterEach(cleanup);
+
+function TemperatureUnitView() {
+  const [unit, setUnit] = useState<Unit>('celsius');
+
+  return (
+    <>
+      <UnitToggle unit={unit} onChange={setUnit} />
+      <CurrentWeather
+        city={MOCK_WEATHER.city}
+        current={{ ...MOCK_WEATHER.current, temperatureC: 0, apparentTemperatureC: null }}
+        unit={unit}
+      />
+    </>
+  );
+}
 
 describe('UnitToggle', () => {
   it.each(['celsius', 'fahrenheit'] as const)('indica a unidade %s em um grupo nomeado', (unit) => {
@@ -83,5 +101,16 @@ describe('UnitToggle', () => {
     await user.click(screen.getByRole('button', { name: '°F' }));
     expect(onChange).toHaveBeenCalledExactlyOnceWith('fahrenheit');
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('atualiza o clima atual de 0 °C para 32 °F ao trocar a unidade', async () => {
+    const user = userEvent.setup();
+    render(<TemperatureUnitView />);
+    const weatherRegion = screen.getByRole('region', { name: 'Clima atual em Salvador' });
+
+    expect(within(weatherRegion).getByText('0 °C')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '°F' }));
+
+    expect(within(weatherRegion).getByText('32 °F')).toBeInTheDocument();
   });
 });

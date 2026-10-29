@@ -168,6 +168,29 @@ describe('getWeather', () => {
     expect(weather.forecast.every((day) => day.weatherCode === null)).toBe(true);
   });
 
+  it('preserva null como indisponível e zero como valor de precipitação', async () => {
+    const body = forecastResponse();
+    mockResponse({
+      ...body,
+      current: { ...body.current, precipitation: null },
+      daily: {
+        ...body.daily,
+        precipitation_probability_max: [null, 0, 90, 20, 10],
+      },
+    });
+
+    const weather = await getWeather(city);
+
+    expect(weather.current.precipitationMm).toBeNull();
+    expect(weather.forecast.map((day) => day.precipitationProbability)).toEqual([
+      null,
+      0,
+      90,
+      20,
+      10,
+    ]);
+  });
+
   it.each([
     {},
     { current: {} },
@@ -183,16 +206,39 @@ describe('getWeather', () => {
     await expect(getWeather(city)).rejects.toBeInstanceOf(WeatherServiceError);
   });
 
+  it('mantém os dias disponíveis quando a previsão tem menos de cinco datas', async () => {
+    const body = forecastResponse();
+    mockResponse({
+      ...body,
+      daily: { ...body.daily, time: body.daily.time.slice(0, 2) },
+    });
+
+    const weather = await getWeather(city);
+
+    expect(weather.forecast).toHaveLength(2);
+    expect(weather.forecast.map((day) => day.date)).toEqual(['2026-10-29', '2026-10-30']);
+  });
+
   it.each([
     { time: undefined },
-    { time: [] },
-    { time: ['2026-10-29'] },
     { time: [null, null, null, null, null] },
     { time: ['2026-02-30', '2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'] },
-  ])('rejeita previsão sem cinco datas válidas: %j', async ({ time }) => {
+  ])('rejeita previsão sem datas válidas: %j', async ({ time }) => {
     mockResponse({ ...forecastResponse(), daily: { time } });
 
     await expect(getWeather(city)).rejects.toBeInstanceOf(WeatherServiceError);
+  });
+
+  it('rejeita resposta sem nenhuma medida meteorológica utilizável', async () => {
+    mockResponse({
+      timezone: 'America/Los_Angeles',
+      current: {},
+      daily: {
+        time: ['2026-10-29', '2026-10-30'],
+      },
+    });
+
+    await expect(getWeather(city)).rejects.toThrow('Resposta meteorológica sem dados utilizáveis.');
   });
 
   it.each([undefined, '', null])('rejeita fuso ausente ou inválido: %j', async (timezone) => {

@@ -125,8 +125,8 @@ export async function getWeather(city: City): Promise<WeatherData> {
   }
 
   const daily = data.daily;
-  if (!Array.isArray(daily.time) || daily.time.length < 5) {
-    throw new WeatherServiceError('Resposta meteorológica incompleta: esperados cinco dias.');
+  if (!Array.isArray(daily.time)) {
+    throw new WeatherServiceError('Resposta meteorológica incompleta: datas diárias ausentes.');
   }
 
   const current: CurrentWeather = {
@@ -157,6 +157,10 @@ export async function getWeather(city: City): Promise<WeatherData> {
       weatherCode: dailyMeasurement(daily.weather_code, index),
     };
   });
+
+  if (![...Object.values(current), ...forecast.flatMap(Object.values)].some(Number.isFinite)) {
+    throw new WeatherServiceError('Resposta meteorológica sem dados utilizáveis.');
+  }
 
   return {
     city,
